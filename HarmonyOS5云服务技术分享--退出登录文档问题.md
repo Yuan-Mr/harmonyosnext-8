@@ -1,98 +1,98 @@
-Hey小伙伴们～今天咱们来聊聊HarmonyOS应用开发中关于用户认证的那些重要操作，特别是登出、账号注销和重新认证这些容易让人懵圈的功能。准备好瓜子饮料，咱们开整！
+👋 Hello everyone! Today, let's explore how to implement account linking with ArkTS (API 12) in HarmonyOS app development. For social apps, games, or utility tools, the account system is a key part of user experience. With flexible account linking, users can log in via mobile phone, email, Huawei Account, etc., and freely bind/unbind accounts for easier management!  
 
-一、优雅的用户登出姿势
-当用户想切换账号或者彻底离开时，咱们可不能简单粗暴地直接关闭应用。试试这个超好用的signOut()方法：
 
-import { auth } from '@kit/accountIdKit';
+### 🌟 Why Implement Account Linking?  
+Imagine a user registers with a mobile number but later wants to switch to email login without losing data—account linking solves this! By linking multiple authentication methods, users can log in via any method, and the system recognizes them as the same account with seamless data synchronization. Developers can also manage user behavior via a unified UID, boosting operational efficiency.  
 
-// 点击退出按钮时调用
-auth.signOut()
-  .then(() => {
-    console.log("拜拜了您嘞～已清空本地缓存");
-    // 这里可以跳转到登录页面
-  })
-  .catch((error) => {
-    console.log("哎呀，退出失败了", error);
-    // 弹个Toast提示用户检查网络
-  });
-​​注意点：​​
 
-退出后会自动清除token和用户信息
-如果用户处于未登录状态调用会报错（记得先判断登录状态）
-云数据库等需要token的操作会立即失效
-二、永久注销账号的严肃操作
-⚠️ 这个操作相当于「删号跑路」，务必在界面做二次确认！核心代码长这样：
+### 📋 Prerequisites  
+- **Service Activation**: Enable *Authentication Service* in the AGC console.  
+- **SDK Integration**: Add the `@hw-agconnect/auth` package to your project.  
+- **App Configuration**: Ensure supported authentication methods (e.g., mobile, email, Huawei Account) are configured.  
 
-auth.deleteUser()
-  .then(() => {
-    console.log("账号已从地球消失");
-    // 清除本地数据+跳转欢迎页
-  })
-  .catch((error) => {
-    if (error.code === 2022) { // 需要重新认证的错误码
-      this.reAuthAndDelete(); // 触发重新认证流程
-    }
-  });
-​​真实场景小剧场：​​
 
-用户点了注销按钮
-弹出蒙层提示「真的要离开我们吗？QAQ」
-用户确认后触发删除操作
-如果账号有敏感操作记录，可能会要求输密码再次验证
-三、关键时刻的重新认证
-当用户要进行敏感操作（比如修改支付密码）时，系统可能会突然要求重新登录。这时候需要祭出reauthenticate：
+### 🔗 Three Ways to Link Accounts (with Code)  
+#### 1️⃣ Link a Mobile Number  
+When a user logged in via another method (e.g., email) wants to bind a mobile number:  
+```typescript  
+import auth from '@hw-agconnect/auth';  
+import { hilog } from '@kit.PerformanceAnalysisKit';  
 
-// 以密码验证为例
-auth.reauthenticate({
-  credential: {
-    authType: auth.AuthType.PASSWORD,
-    password: "用户输入的密码" // 记得做加密处理！
-  }
-}).then(() => {
-  console.log("验明正身，继续操作吧");
-}).catch((error) => {
-  console.log("认证翻车了", error); 
-  // 提示错误原因，比如密码错误次数过多
-});
-​​支持多种验证方式：​​
+auth.getCurrentUser().then((user: AuthUser | null) => {  
+  user!.link({  
+    kind: "phone",  
+    phoneNumber: "180****1485",  
+    countryCode: "86",  
+    verifyCode: "123456" // Obtain from SMS in real development  
+  }).then(() => {  
+    hilog.info(0x0000, 'AuthDemo', 'Mobile number linked successfully!');  
+  }).catch((error: Error) => {  
+    hilog.error(0x0000, 'AuthDemo', `Linking failed: ${error.message}`);  
+  });  
+});  
+```  
+**Note**: Call the SMS verification API to get the code first.  
 
-手机验证码
-邮箱验证
-第三方账号（微信/QQ等）
-生物识别（指纹/面部）
-四、实战避坑指南
-遇到问题先别慌，试试这些常见解决方案：
+#### 2️⃣ Link an Email  
+When a user wants to bind an email as an alternative login:  
+```typescript  
+user!.link({  
+  kind: "email",  
+  email: "user@example.com",  
+  password: "SecurePassword123!", // Optional (if password is set)  
+  verifyCode: "7890" // Obtain from the email verification code  
+}).then(() => {  
+  hilog.info(0x0000, 'AuthDemo', 'Email linked successfully!');  
+});  
+```  
 
-​​Q1：为什么signOut()之后还能获取到用户信息？​​
+#### 3️⃣ Link a Huawei Account  
+One-click binding for Huawei Accounts, ideal for ecosystem apps:  
+```typescript  
+user!.link({ kind: "hwid" })  
+  .then(() => hilog.info(0x0000, 'AuthDemo', 'Huawei Account linked successfully!'));  
+```  
 
-检查是否有多处缓存未清除
-等待异步操作完成后再跳转页面（加个setTimeout试试）
-​​Q2：用户注销后数据怎么处理？​​
 
-提前告知会删除云端数据
-重要数据保留7天过渡期（法律要求）
-​​Q3：重新认证总是返回2022错误？​​
+### ⚠️ Pitfall Prevention  
+- **Uniqueness Rule**: Each authentication method can only bind to one account (e.g., cannot bind two mobile numbers).  
+- **Sensitive Ops Protection**: Actions like password changes or unbinding must be done within 5 minutes of login; reauthenticate if timed out.  
+- **Retain One Method**: The last authentication method can't be unbound to prevent account loss.  
 
-检查网络连接状态
-确认凭证是否过期（比如短信验证码有效期）
-调用auth.getCurrentUser()确认当前用户状态
-​​Q4：如何设计友好的认证流程？​​
 
-错误提示要明确（别只说「操作失败」）
-提供备选验证方式
-连续错误后锁定要人性化（别永久封禁）
-五、说点掏心窝的话
-其实认证模块最让人头疼的不是代码，而是各种边界情况处理。建议大家在开发时：
+### 🔓 How to Unbind an Account  
+When a user wants to unbind a method (ensure at least one remains):  
+```typescript  
+// Unbind mobile number  
+auth.getCurrentUser().then(user => {  
+  user.unlink("phone")  
+    .then(() => hilog.info(0x0000, 'AuthDemo', 'Mobile number unbound!'));  
+});  
+```  
 
-多用try-catch包裹敏感操作
-所有网络请求都要加超时处理
-本地保存关键操作日志（方便排查问题）
-一定要在真机上测试生物识别！
-最后附上咱们的「救命三件套」：
 
-官方问题排查文档：点击这里
-错误码速查表：传送门
-开发者社区入口：戳我
-遇到问题别慌，随时来评论区找我们唠嗑～祝大家开发顺利，少写bug多摸鱼！（手动狗头）
+### 💡 Advanced Tips  
+- **Unified User ID**: Use `user.getUid()` to get a unique ID for consistent user identification.  
+- **Error Handling**: Wrap sensitive ops in try-catch with friendly messages:  
+  ```typescript  
+  catch((error: Error) => {  
+    if (error.code === '2032') {  
+      alert('Invalid verification code, request again!');  
+    }  
+  });  
+  ```  
+- **Multi-Device Sync**: Linking/unbinding syncs real-time across all logged-in devices.  
 
-【下课！】🚀
+
+### 🎯 Best Practices  
+- **User Upgrade**: When anonymous users convert to formal accounts, bind mobile/email to retain data.  
+- **Duplicate Account Merge**: Prompt linking when the system detects the same user registered via different methods.  
+- **Security Enhancement**: Guide users to bind a second verification method as a backup.  
+
+
+### 🚀 Conclusion  
+ArkTS account linking lets developers build flexible, secure user systems with ease. Whether enhancing UX or optimizing backend management, it's essential for HarmonyOS development. Give it a try! Share your issues or stories in the comments.  
+
+✨ **互动时间**: What tricky account system issues have you faced in development? Share your experiences!  
+
+Hope this guide serves as a practical handbook for your HarmonyOS journey. Stay tuned! 👨💻🚀
